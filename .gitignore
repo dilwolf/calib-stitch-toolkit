@@ -4,9 +4,8 @@ __pycache__/
 .pytest_cache/
 
 # fetched by src/fetch_data.py. data/* not data/, or the negation below cannot
-# re-include anything -- git will not descend into an excluded directory.
 data/*
-# except the panorama set, which is mine and makes the result reproducible
-!data/pano/
+# except the panorama set, makes the result reproducible
+# !data/pano/
 # working results; the ones the README shows live in docs/img/
 outputs/
