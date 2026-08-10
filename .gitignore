@@ -1,0 +1,9 @@
+.venv*/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# fetched by src/fetch_data.py, or your own captures
+data/
+# working results; the ones the README shows live in docs/img/
+outputs/

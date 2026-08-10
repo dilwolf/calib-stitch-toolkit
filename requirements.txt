@@ -1,0 +1,5 @@
+# SIFT and the detail_ blending modules are contrib-only; plain
+# opencv-python will import fine and then fail at stitch time.
+opencv-contrib-python>=4.10
+numpy>=1.26
+pytest>=8.0
