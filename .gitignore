@@ -3,7 +3,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# fetched by src/fetch_data.py, or your own captures
+# fetched by src/fetch_data.py
 data/
+# except the panorama set, which is mine and makes the result reproducible
+!data/pano/
 # working results; the ones the README shows live in docs/img/
 outputs/
