@@ -154,6 +154,72 @@ def chain_to_reference(pairwise, ref):
     return Hs
 
 
+def match_graph(imgs, detector="sift", min_inliers=30, quiet=False):
+    """Match every pair, keeping the homographies that survive RANSAC.
+
+    ponytail: O(n^2) matching. Fine to a couple of dozen images; past that the
+    usual fix is to only test pairs whose global descriptors already look alike.
+    """
+    n = len(imgs)
+    weights = np.zeros((n, n))
+    goods = np.zeros((n, n))
+    Hs = {}
+    for i in range(n):
+        for j in range(i + 1, n):
+            k1, k2, good = match_pair(imgs[i], imgs[j], detector)
+            try:
+                H, inliers = estimate_homography(k1, k2, good)
+            except RuntimeError:
+                continue
+            if inliers < min_inliers:
+                continue
+            weights[i, j] = weights[j, i] = inliers
+            goods[i, j] = goods[j, i] = len(good)
+            Hs[(i, j)] = H
+            Hs[(j, i)] = np.linalg.inv(H)
+    if not quiet:
+        print("  pairwise inliers")
+        print("      " + "".join(f"{j:>6}" for j in range(n)))
+        for i in range(n):
+            cells = "".join("     -" if i == j else f"{int(weights[i, j]):>6}"
+                            for j in range(n))
+            print(f"  {i:>3} {cells}")
+    return weights, goods, Hs
+
+
+def spanning_order(weights, ref):
+    """Prim's algorithm on the inlier graph, heaviest edge first.
+
+    Chaining in file order assumes the inputs are an ordered sweep. When they
+    are not, the chain crosses a pair that barely matches and every image after
+    it is placed by a homography fitted to noise.
+    """
+    n = len(weights)
+    seen = {ref}
+    order = []
+    while len(seen) < n:
+        best, best_w = None, 0
+        for u in seen:
+            for v in range(n):
+                if v in seen:
+                    continue
+                if weights[u, v] > best_w:
+                    best, best_w = (v, u), weights[u, v]
+        if best is None:
+            break  # remaining images share no usable overlap
+        order.append(best)
+        seen.add(best[0])
+    return order, sorted(set(range(n)) - seen)
+
+
+def chain_via_graph(Hs, order, ref, n):
+    out = [None] * n
+    out[ref] = np.eye(3)
+    for node, parent in order:
+        out[node] = out[parent] @ Hs[(parent, node)]
+    return out
+
+
 def warp_all(imgs, Hs):
     corners = []
     for im, H in zip(imgs, Hs):
@@ -165,7 +231,7 @@ def warp_all(imgs, Hs):
     xmin, ymin = np.int32(allc.min(axis=0).ravel() - 0.5)
     xmax, ymax = np.int32(allc.max(axis=0).ravel() + 0.5)
     shift = np.array([[1, 0, -xmin], [0, 1, -ymin], [0, 0, 1]], np.float64)
-    size = (xmax - xmin, ymax - ymin)
+    size = (int(xmax - xmin), int(ymax - ymin))
 
     warped, masks = [], []
     for im, H in zip(imgs, Hs):
@@ -238,11 +304,31 @@ def pairwise_homographies(imgs, detector="sift", quiet=False):
     return pairwise, stats
 
 
-def stitch(imgs, detector="sift", ref=None, bands=5, seams=True, quiet=False):
+def stitch(imgs, detector="sift", ref=None, bands=5, seams=True, quiet=False,
+           graph=False):
     ref = len(imgs) // 2 if ref is None else ref
-    pairwise, stats = pairwise_homographies(imgs, detector, quiet)
 
-    Hs = chain_to_reference(pairwise, ref)
+    if graph:
+        weights, goods, pair_H = match_graph(imgs, detector, quiet=quiet)
+        order, orphans = spanning_order(weights, ref)
+        if orphans and not quiet:
+            print(f"  no usable overlap, dropped: {orphans}")
+        all_Hs = chain_via_graph(pair_H, order, ref, len(imgs))
+        keep = [i for i, H in enumerate(all_Hs) if H is not None]
+        imgs = [imgs[i] for i in keep]
+        Hs = [all_Hs[i] for i in keep]
+        stats = [{"pair": f"{p}->{n}", "kp1": 0, "kp2": 0,
+                  "good": int(goods[p, n]), "inliers": int(weights[p, n]),
+                  "inlier_pct": 100 * weights[p, n] / max(goods[p, n], 1),
+                  "match_s": 0.0, "homography_s": 0.0}
+                 for n, p in order]
+        if not quiet:
+            print("  spanning tree: " + "  ".join(
+                f"{p}->{n}({int(weights[p, n])})" for n, p in order))
+    else:
+        pairwise, stats = pairwise_homographies(imgs, detector, quiet)
+        Hs = chain_to_reference(pairwise, ref)
+
     warped, masks, size = warp_all(imgs, Hs)
     blend_masks = find_seams(warped, masks) if seams else masks
     return warped, masks, blend_masks, size, stats
@@ -257,6 +343,9 @@ def main():
                     help="index of the reference image (default: middle)")
     ap.add_argument("--bands", type=int, default=5)
     ap.add_argument("--no-seams", action="store_true")
+    ap.add_argument("--graph", action="store_true",
+                    help="match all pairs and order them by a maximum spanning "
+                         "tree, instead of assuming the files are a sweep")
     ap.add_argument("--cylindrical", metavar="F", default=None,
                     help="pre-warp onto a cylinder; F in px, or 'auto' to "
                          "estimate it from the pairwise homographies")
@@ -271,7 +360,7 @@ def main():
     imgs = load(paths, args.max_width)
     print(f"{len(imgs)} images at {imgs[0].shape[1]}x{imgs[0].shape[0]}, "
           f"detector={args.detector}")
-    tag = args.detector
+    tag = f"{Path(args.images).name}_{args.detector}"
     if args.cylindrical:
         img_size = (imgs[0].shape[1], imgs[0].shape[0])
         if args.cylindrical == "auto":
@@ -291,8 +380,11 @@ def main():
 
     t0 = time.perf_counter()
     warped, masks, blend_masks, size, stats = stitch(
-        imgs, args.detector, args.ref, args.bands, not args.no_seams)
+        imgs, args.detector, args.ref, args.bands, not args.no_seams,
+        graph=args.graph)
     total = time.perf_counter() - t0
+    if args.graph:
+        tag += "_graph"
 
     outdir = Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
