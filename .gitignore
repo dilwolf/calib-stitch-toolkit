@@ -5,7 +5,7 @@ __pycache__/
 
 # fetched by src/fetch_data.py. data/* not data/, or the negation below cannot
 data/*
-# except the panorama set, makes the result reproducible
-# !data/pano/
+# except the panorama set, which ships so the stitch reproduces
+!data/pano/
 # working results; the ones the README shows live in docs/img/
 outputs/
