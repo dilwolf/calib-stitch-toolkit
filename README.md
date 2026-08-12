@@ -12,6 +12,10 @@ tutorial, and where something does not work I have said so.
 
 13 views of a 9x6 board at 640x480 (`src/calibrate.py`).
 
+**The images are OpenCV's public `left01-14` sample set, not my own camera.**
+`src/fetch_data.py` pulls them, so every number in this section reproduces
+exactly on a clean clone rather than depending on hardware only I have.
+
 The interesting part is not the fit, it is the iteration. One view reprojects an
 order of magnitude worse than the rest:
 
@@ -53,8 +57,8 @@ and the extrinsics are in board units.
 
 ![before and after undistortion](docs/img/undistort.jpg)
 
-`alpha=1`, so the whole frame is kept and the correction is visible as curvature
-at the border.
+Same public sample set as above. `alpha=1`, so the whole frame is kept and the
+correction is visible as curvature at the border.
 
 The point of `src/undistort.py` is the split in cost:
 
