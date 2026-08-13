@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      # headless rather than the full contrib build: the tests never open a
+      # window, and headless skips the GUI libraries the runner would otherwise
+      # need installed. SIFT and the detail_ modules are present either way.
+      - name: install deps
+        run: pip install "opencv-contrib-python-headless>=4.10" "numpy>=1.26" pytest
+
+      # fetch_data is deliberately not run. Every test builds its own geometry
+      # and reads no image, so the suite cannot fail because a remote dataset
+      # moved -- and it finishes in well under a second.
+      - name: pytest
+        run: pytest -q

@@ -1,5 +1,7 @@
 # calib-stitch-toolkit
 
+[![ci](https://github.com/dilwolf/calib-stitch-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/dilwolf/calib-stitch-toolkit/actions/workflows/ci.yml)
+
 Camera calibration and panorama stitching built from OpenCV primitives, with the
 intermediate results measured rather than asserted.
 
