@@ -19,9 +19,10 @@ def label(img, text):
     return out
 
 
-def stack_same_width(images, width):
-    resized = [fit_width(im, width) for im in images]
-    return np.vstack(resized)
+def label_at_width(img, text, width):
+    """Resize first, then label. Labelling before the resize scales the text
+    down with the image, so a wide panel ends up with an unreadable caption."""
+    return label(fit_width(img, width), text)
 
 
 def worst_seam_crop(a, b, win=(520, 380)):
@@ -55,11 +56,12 @@ def main():
     cv2.imwrite(str(dest / "undistort.jpg"),
                 fit_width(read("undistort_alpha1.png"), args.width))
 
-    planar = label(read("pano_pano_sift_graph_multiband.jpg"), "planar homography")
-    cyl = label(read("pano_pano_sift_cyl_graph_multiband.jpg"),
-                "cylindrical pre-warp, f estimated from the homographies")
-    cv2.imwrite(str(dest / "projection.jpg"),
-                stack_same_width([planar, cyl], args.width))
+    planar = label_at_width(read("pano_pano_sift_graph_multiband.jpg"),
+                            "planar homography", args.width)
+    cyl = label_at_width(read("pano_pano_sift_cyl_graph_multiband.jpg"),
+                         "cylindrical pre-warp, f estimated from the homographies",
+                         args.width)
+    cv2.imwrite(str(dest / "projection.jpg"), np.vstack([planar, cyl]))
 
     cv2.imwrite(str(dest / "panorama.jpg"),
                 fit_width(read("pano_pano_sift_cyl_graph_multiband.jpg"), args.width))

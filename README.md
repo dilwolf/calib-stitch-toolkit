@@ -136,8 +136,9 @@ tested.
 
 ![panorama](docs/img/panorama.jpg)
 
-Five frames, hand-held, rotating from one spot. `src/stitch.py` does
-detect → ratio-test match → RANSAC homography → common canvas → seam → blend.
+Five frames of a campus courtyard, hand-held, rotating from one spot.
+`src/stitch.py` does detect → ratio-test match → RANSAC homography → common
+canvas → seam → blend.
 
 ### Why cylindrical
 
@@ -148,16 +149,18 @@ the outer images stretch without bound. Same five inputs, same content:
 
 | projection | canvas | total |
 |---|---|---|
-| planar homography | 7990 x 6100 | 16.9 s |
-| cylindrical pre-warp | **2776 x 1625** | 5.9 s |
+| planar homography | 5608 x 2556 | 6.0 s |
+| cylindrical pre-warp | **2334 x 1055** | 3.2 s |
 
-10.8x less canvas area for the same picture.
+5.8x less canvas area for the same picture.
 
 That needs a focal length before any warping can happen, so it is estimated from
 the pairwise homographies: for a camera that only rotates, `H = K R K⁻¹`, and
 with square pixels and a centred principal point `f` drops out in closed form.
-Eight estimates over four pairs, **median 1051.3 px** (59.4° horizontal FOV),
-spread 115–1248. Median, not mean — one badly conditioned pair reported 115.
+Eight estimates over four pairs, **median 817.6 px** (72.5° horizontal FOV),
+spread 526–872. Seven of the eight land within 40 px of each other and one pair
+reports 526, so the median is taken rather than the mean — a single badly
+conditioned pair should not move the warp.
 
 `cv2.detail.focalsFromHomography` exists but writes through reference
 parameters, which the Python binding cannot express, so it returns `None`. The
@@ -190,7 +193,7 @@ mean inlier ratio goes 79.1% → **91.3%**.
 ![budapest mosaic](docs/img/panorama_budapest.jpg)
 
 This is also why the two scenes are both valid: a homography is exact for pure
-rotation (the rooftop) *or* for a planar scene (the map). Different
+rotation (the courtyard) *or* for a planar scene (the map). Different
 justifications, same algebra.
 
 ### Why multi-band, not averaging
@@ -207,34 +210,42 @@ the seam is indistinguishable from ordinary scene detail:
 
 | scene | multi-band | average |
 |---|---|---|
-| rooftop, SIFT | 1.097 | 1.514 |
-| rooftop, ORB | 0.960 | 1.508 |
+| courtyard, SIFT | 0.970 | 1.269 |
+| courtyard, ORB | 0.892 | 1.292 |
 | map, SIFT | 0.957 | 1.200 |
 | map, ORB | 0.971 | 1.219 |
 
 ### Benchmark
 
-Rooftop, 5 x 1200x1600, cylindrical + graph:
+Courtyard, 5 x 1200x900, cylindrical + graph:
 
 | method | good | inliers | inlier % | match/pair | align | blend | total | canvas |
 |---|---|---|---|---|---|---|---|---|
-| SIFT | 1443 | 1135 | 77.3 | 0.313 s | 8.44 s | 0.94 s | 9.38 s | 2776x1625 |
-| ORB | 1344 | 1051 | 74.8 | **0.112 s** | 3.10 s | 0.38 s | 3.48 s | 2768x1656 |
-| `cv2.Stitcher` | – | – | – | – | – | – | **1.25 s** | 2167x1385 |
+| SIFT | 1085 | 846 | 77.7 | 0.218 s | 3.14 s | 0.14 s | 3.27 s | 2334x1055 |
+| ORB | 1102 | 955 | **86.5** | **0.067 s** | 1.54 s | 0.12 s | 1.66 s | 2337x1089 |
+| `cv2.Stitcher` | – | – | – | – | – | – | **0.82 s** | 2122x849 |
 
 Map, 6 x 1142x806, graph:
 
 | method | good | inliers | inlier % | match/pair | align | blend | total | canvas |
 |---|---|---|---|---|---|---|---|---|
-| SIFT | 946 | 863 | 91.3 | 0.258 s | 5.58 s | 0.42 s | 6.00 s | 2397x1265 |
+| SIFT | 946 | 863 | **91.3** | 0.258 s | 5.58 s | 0.42 s | 6.00 s | 2397x1265 |
 | ORB | 518 | 470 | 90.4 | **0.077 s** | 2.83 s | 0.32 s | 3.15 s | 2464x1296 |
 | `cv2.Stitcher` | – | – | – | – | – | – | **0.95 s** | 1692x1140 |
 
-ORB matches about 3x faster than SIFT and gives up 1–3 points of inlier ratio,
-which on both of these scenes is a good trade. It finds far fewer usable matches
-on the low-texture map (518 against 946).
+ORB matches about 3x faster than SIFT on both scenes. Which one is *more
+accurate* does not survive the change of scene: on the courtyard ORB is ahead on
+inlier ratio, 86.5% against 77.7%, while on the map it is a point behind and
+finds barely half as many usable matches (518 against 946).
 
-**`cv2.Stitcher` is 3–7x faster than this implementation and I have not tried to
+The map is low-texture and mostly fine printed line work, which suits SIFT's
+scale-space; the courtyard is full of high-contrast window frames and building
+edges, which is what a corner detector like ORB is built for. Two scenes are not
+enough to rank the detectors, and the useful conclusion is the opposite of a
+ranking: pick per scene, and measure rather than assume SIFT wins because it is
+the more expensive algorithm.
+
+**`cv2.Stitcher` is 2–6x faster than this implementation and I have not tried to
 hide that.** It does its seam finding and blending at reduced resolution and
 bundle-adjusts all cameras together instead of composing pairwise transforms.
 The point of this repo is the parts, not beating the library.
